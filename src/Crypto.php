@@ -37,7 +37,8 @@ abstract class Crypto
      */
     public static function instance(?string $driver = null): CryptoInterface
     {
-        $driverName = strtolower($driver ?: (string)config('crypto.default', 'sig'));
+        $default = function_exists('config') ? (string)config('crypto.default', 'sig') : (function_exists('env') ? (string)env('CRYPTO_DRIVER', 'sig') : 'sig');
+        $driverName = strtolower($driver ?: $default);
         if (isset(static::$instances[$driverName])) {
             return static::$instances[$driverName];
         }
@@ -47,8 +48,12 @@ abstract class Crypto
             throw new \InvalidArgumentException("Crypto driver [{$class}] does not exist.");
         }
 
-        $config = (array)config("crypto.drivers.{$driverName}", []);
-        $instance = Container::getInstance()->make($class, ['config' => $config]);
+        $config = function_exists('config') ? (array)config("crypto.drivers.{$driverName}", []) : [];
+        if (class_exists(Container::class) && method_exists(Container::class, 'getInstance')) {
+            $instance = Container::getInstance()->make($class, ['config' => $config]);
+        } else {
+            $instance = new $class($config);
+        }
 
         return static::$instances[$driverName] = $instance;
     }
