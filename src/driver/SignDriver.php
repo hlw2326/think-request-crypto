@@ -7,28 +7,28 @@ namespace Hlw\Crypto\driver;
 use think\Request;
 
 /**
- * URL 参数字典序 MD5 签名驱动（对齐前端 @hlw-uni/mp-vue 签名规范）
+ * 字典签名驱动
  *
- * @class SigDriver
+ * @class SignDriver
  * @package Hlw\Crypto\driver
  */
-class SigDriver extends AbstractDriver
+class SignDriver extends AbstractDriver
 {
     /**
-     * 计算签名
+     * 计算签名值
      *
-     * @param string $content QUERY_STRING 原始字符串
-     * @param array $options 选项（如自定义 reserved 保留排除字段、secret 密钥）
-     * @return string MD5 签名
+     * @param string $content 查询原始字串
+     * @param array $options 签名附加选项
+     * @return string MD5 签名文本
      */
     public function sign(string $content, array $options = []): string
     {
-        $secret = (string)($options['secret'] ?? $this->getConfig('secret', ''));
+        $secret = (string) ($options['secret'] ?? $this->getConfig('secret', ''));
         if ($secret === '') {
             return '';
         }
 
-        $reserved = $options['reserved'] ?? $this->getConfig('reserved', ['sig', 's', '_t']);
+        $reserved = $options['reserved'] ?? $this->getConfig('reserved', ['sign', 'sig', 's', '_t']);
 
         $pairs = array_filter(explode('&', $content), static function (string $pair) use ($reserved): bool {
             if ($pair === '') {
@@ -48,20 +48,19 @@ class SigDriver extends AbstractDriver
     }
 
     /**
-     * 校验请求合法性
+     * 校验合法性
      *
-     * @param Request $request
-     * @return array{0: bool, 1: string, 2: mixed}
+     * @param Request $request 请求实例项
+     * @return array{0: bool, 1: string, 2: mixed} 校验结果组
      */
     public function verify(Request $request): array
     {
-        $secret = (string)$this->getConfig('secret', '');
-        // 若未启用或密钥为空则跳过校验
+        $secret = (string) $this->getConfig('secret', '');
         if ($secret === '' || !$this->getConfig('enabled', true)) {
             return [true, '', []];
         }
 
-        $queryString = (string)$request->server('QUERY_STRING', '');
+        $queryString = (string) $request->server('QUERY_STRING', '');
         if ($queryString === '') {
             $queryString = http_build_query($request->get());
         }
@@ -71,27 +70,32 @@ class SigDriver extends AbstractDriver
             return [true, '', []];
         }
 
-        $sig = (string)$request->get('sig', '');
-        if ($sig === '') {
-            return [false, '请求缺少签名参数 (sig)', []];
+        $clientSign = (string) ($request->get('sign', '') ?: $request->get('sig', ''));
+        if ($clientSign === '') {
+            return [false, '请求缺少签名参数', []];
         }
 
-        if (!hash_equals($expected, $sig)) {
-            return [false, '请求签名校验失败 (sig mismatch)', []];
+        if (!hash_equals($expected, $clientSign)) {
+            return [false, '请求签名校验失败', []];
         }
 
         // 校验时间戳防重放
-        $timestamp = (int)$request->get('t', 0);
-        [$timeOk, $timeMsg] = $this->checkTimestamp($timestamp);
-        if (!$timeOk) {
-            return [false, $timeMsg, []];
+        $timestamp = (int) ($request->get('_t', 0) ?: $request->get('t', 0));
+        if ($timestamp > 0) {
+            [$isTimeOk, $timeMsg] = $this->checkTimestamp($timestamp);
+            if (!$isTimeOk) {
+                return [false, $timeMsg, []];
+            }
         }
 
         return [true, '', []];
     }
 
     /**
-     * 加密数据
+     * 加密数据体
+     *
+     * @param mixed $data 待加密数据
+     * @return string
      */
     public function encrypt(mixed $data): string
     {
@@ -99,7 +103,10 @@ class SigDriver extends AbstractDriver
     }
 
     /**
-     * 解密数据（签名模式下数据为明文）
+     * 解密数据体
+     *
+     * @param string $ciphertext 密文字符串
+     * @return mixed
      */
     public function decrypt(string $ciphertext): mixed
     {
