@@ -32,12 +32,12 @@ abstract class Crypto
     /**
      * 获取驱动实例对象
      *
-     * @param ?string $driver 驱动名称 (如 sig, aes, hmac, none)
+     * @param ?string $driver 驱动名称 (如 sign, rsa, aes, hmac, none)
      * @return CryptoInterface
      */
     public static function instance(?string $driver = null): CryptoInterface
     {
-        $default = function_exists('config') ? (string)config('crypto.default', 'sig') : (function_exists('env') ? (string)env('CRYPTO_DRIVER', 'sig') : 'sig');
+        $default = function_exists('config') ? (string)config('crypto.default', 'sign') : (function_exists('env') ? (string)env('CRYPTO_DRIVER', 'sign') : 'sign');
         $driverName = strtolower($driver ?: $default);
         if (isset(static::$instances[$driverName])) {
             return static::$instances[$driverName];
