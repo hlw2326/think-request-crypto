@@ -22,7 +22,7 @@ class RsaDriver extends AbstractDriver
      */
     public function encrypt(mixed $data): string
     {
-        $clientKey = (string) $this->getConfig('client_public_key');
+        $clientKey = str_replace(['\r\n', '\n'], "\n", (string) $this->getConfig('client_public_key'));
         if ($clientKey === '' || empty($data)) {
             return '';
         }
@@ -67,7 +67,7 @@ class RsaDriver extends AbstractDriver
         }
         [$encKey, $encPayload] = $parts;
 
-        $privateKey = (string) $this->getConfig('private_key');
+        $privateKey = str_replace(['\r\n', '\n'], "\n", (string) $this->getConfig('private_key'));
         if ($privateKey === '') {
             return null;
         }
