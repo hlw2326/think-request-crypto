@@ -10,20 +10,13 @@ use think\Request;
 use think\Response;
 
 /**
- * 请求加密与验签中间件
- *
- * @class CryptoMiddleware
- * @package Hlw\Crypto\middleware
+ * 请求安全中间件
  */
 class CryptoMiddleware
 {
     /**
-     * 中间件处理入口
-     *
-     * @param Request $request
-     * @param Closure $next
-     * @return Response
-     */
+ * 请求安全中间件
+ */
     public function handle(Request $request, Closure $next): Response
     {
         [$valid, $message, $data] = Crypto::verify($request);
@@ -38,10 +31,10 @@ class CryptoMiddleware
         // 校验通过后，自动将解密参数注入 Request
         try {
             $request = Crypto::handleRequest($request);
-        } catch (\Throwable $e) {
+        } catch (\Throwable $error) {
             return json([
                 'code' => 401,
-                'info' => $e->getMessage(),
+                'info' => $error->getMessage(),
                 'data' => [],
             ], 401);
         }

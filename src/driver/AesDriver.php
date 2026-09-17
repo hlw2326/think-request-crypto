@@ -102,7 +102,7 @@ class AesDriver extends AbstractDriver
             return [true, '', []];
         }
 
-        // 1. 查找密文来源：优先读取 param / post / get / body
+        // 查找密文来源
         $encrypted = (string)($request->param('_encrypted', '') ?: ($request->post('_encrypted', '') ?: $request->get('_encrypted', '')));
         if ($encrypted === '') {
             $content = trim((string)$request->getContent());
