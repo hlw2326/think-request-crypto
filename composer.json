@@ -1,0 +1,33 @@
+{
+    "name": "hlw2326/request-crypto",
+    "description": "Multi-driver HTTP request encryption, signature and verification library for ThinkPHP.",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "HLW",
+            "email": "1608626145@qq.com",
+            "homepage": "https://github.com/hlw2326"
+        }
+    ],
+    "keywords": [
+        "thinkphp",
+        "crypto",
+        "signature",
+        "aes",
+        "hmac",
+        "security",
+        "encryption"
+    ],
+    "homepage": "https://github.com/hlw2326/request-crypto",
+    "autoload": {
+        "psr-4": {
+            "Hlw\\Crypto\\": "src/"
+        }
+    },
+    "require": {
+        "php": ">=8.1",
+        "ext-json": "*",
+        "ext-openssl": "*"
+    }
+}
