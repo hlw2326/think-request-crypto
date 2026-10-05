@@ -22,10 +22,7 @@
     "autoload": {
         "psr-4": {
             "Hlw\\Crypto\\": "src/"
-        },
-        "files": [
-            "src/helper.php"
-        ]
+        }
     },
     "require": {
         "php": ">=8.1",

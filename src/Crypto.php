@@ -6,8 +6,6 @@ namespace Hlw\Crypto;
 
 use think\Request;
 
-require_once __DIR__ . '/helper.php';
-
 /**
  * 请求解密与验签工具
  *
