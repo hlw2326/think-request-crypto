@@ -7,7 +7,7 @@ namespace Hlw\Crypto;
 use think\Request;
 
 /**
- * 请求解密与验签工具
+ * 请求解密与验签工具（方案1：RSA + AES 工业级混合加解密架构）
  *
  * @class Crypto
  * @package Hlw\Crypto
@@ -15,9 +15,11 @@ use think\Request;
 class Crypto
 {
     /**
-     * RSA-2048 私钥分段解密密文
+     * 方案1：RSA + AES 混合解密密文（一次一密，极速微秒级解析）
      *
-     * @param string $cipher 密文字符串（支持点分隔多段 Base64、连续 256 字节 Base64、或明文 JSON）
+     * 密文协议格式：[RSA加密的Key:IV].[AES加密的业务密文]
+     *
+     * @param string $cipher 密文字符串（支持两段式混合密文、纯 RSA 分段密文、或明文 JSON）
      * @param ?string $privateKey RSA 私钥内容（缺省自动从 config 或 env 读取）
      * @return ?array 解密后的数据字典，解密失败返回 null
      */
@@ -54,7 +56,33 @@ class Crypto
             return null;
         }
 
-        // 4. 解析分块（支持点分隔 Base64 或连续 256 字节块）
+        // 4. 方案1：RSA + AES 混合解密解析（标准两段式：[RSA_KEY_IV].[AES_DATA]）
+        if (str_contains($cipher, '.')) {
+            $parts = explode('.', $cipher);
+            if (count($parts) === 2) {
+                [$encKeyB64, $encDataB64] = $parts;
+                $rawEncKey = base64_decode($encKeyB64, true);
+                if ($rawEncKey !== false) {
+                    $decryptedSecret = '';
+                    $isKeyOk = openssl_private_decrypt($rawEncKey, $decryptedSecret, $key, OPENSSL_PKCS1_PADDING);
+                    if ($isKeyOk && str_contains($decryptedSecret, ':')) {
+                        [$aesKey, $aesIv] = explode(':', $decryptedSecret, 2);
+                        $rawEncData = base64_decode($encDataB64, true);
+                        if ($rawEncData !== false) {
+                            $decryptedJson = openssl_decrypt($rawEncData, 'AES-128-CBC', $aesKey, OPENSSL_RAW_DATA, $aesIv);
+                            if ($decryptedJson !== false && $decryptedJson !== '') {
+                                $data = json_decode($decryptedJson, true);
+                                if (is_array($data)) {
+                                    return $data;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 5. 纯 RSA 分段解密（多段点分隔或连续 256 字节块）
         $isRawBytes = false;
         if (str_contains($cipher, '.')) {
             $chunks = explode('.', $cipher);
@@ -72,7 +100,6 @@ class Crypto
         }
 
         $result = '';
-
         foreach ($chunks as $chunk) {
             if ($isRawBytes) {
                 $rawChunk = $chunk;
@@ -100,11 +127,11 @@ class Crypto
     }
 
     /**
-     * RSA-2048 公钥分段加密（117 字节/块，PKCS1 Padding，生成点分隔 Base64 串）
+     * 方案1：RSA + AES 混合加密（一次一密，极速对称加密，单块 RSA 密约）
      *
      * @param array|string $data 待加密数据
      * @param ?string $publicKey RSA 公钥内容（缺省自动从 config 或 env 读取）
-     * @return ?string 点分隔的 Base64 密文，加密失败返回 null
+     * @return ?string 两段式点分隔 Base64 密文，加密失败返回 null
      */
     public static function encrypt(array|string $data, ?string $publicKey = null): ?string
     {
@@ -119,19 +146,24 @@ class Crypto
             return null;
         }
 
-        $chunks = str_split($raw, 117);
-        $encryptedChunks = [];
+        // 1. 动态生成 16 字节随机密钥与 16 字节 IV
+        $aesKey = bin2hex(random_bytes(8));
+        $aesIv  = bin2hex(random_bytes(8));
 
-        foreach ($chunks as $chunk) {
-            $encrypted = '';
-            $isOk = openssl_public_encrypt($chunk, $encrypted, $key, OPENSSL_PKCS1_PADDING);
-            if (!$isOk) {
-                return null;
-            }
-            $encryptedChunks[] = base64_encode($encrypted);
+        // 2. RSA 单块加密对称密钥对（仅 33 字节，绝无分段负担）
+        $encryptedKey = '';
+        $isKeyOk = openssl_public_encrypt("{$aesKey}:{$aesIv}", $encryptedKey, $key, OPENSSL_PKCS1_PADDING);
+        if (!$isKeyOk) {
+            return null;
         }
 
-        return implode('.', $encryptedChunks);
+        // 3. AES-128-CBC 高性能加密业务数据
+        $encryptedData = openssl_encrypt($raw, 'AES-128-CBC', $aesKey, OPENSSL_RAW_DATA, $aesIv);
+        if ($encryptedData === false) {
+            return null;
+        }
+
+        return base64_encode($encryptedKey) . '.' . base64_encode($encryptedData);
     }
 
     /**
