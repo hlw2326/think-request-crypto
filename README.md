@@ -1,8 +1,8 @@
-# hlw2326/request-crypto
+# hlw2326/think-request-crypto
 
-[![Latest Stable Version](https://poser.pugx.org/hlw2326/request-crypto/v/stable)](https://packagist.org/packages/hlw2326/request-crypto)
-[![Total Downloads](https://poser.pugx.org/hlw2326/request-crypto/downloads)](https://packagist.org/packages/hlw2326/request-crypto)
-[![License](https://poser.pugx.org/hlw2326/request-crypto/license)](https://packagist.org/packages/hlw2326/request-crypto)
+[![Latest Stable Version](https://poser.pugx.org/hlw2326/think-request-crypto/v/stable)](https://packagist.org/packages/hlw2326/think-request-crypto)
+[![Total Downloads](https://poser.pugx.org/hlw2326/think-request-crypto/downloads)](https://packagist.org/packages/hlw2326/think-request-crypto)
+[![License](https://poser.pugx.org/hlw2326/think-request-crypto/license)](https://packagist.org/packages/hlw2326/think-request-crypto)
 
 ThinkPHP / PHP 企业级 HTTP 请求加解密、防篡改签名校验与上下文安全解密扩展包。配套前端 `@hlw-uni-mp/request`。
 
@@ -24,7 +24,7 @@ ThinkPHP / PHP 企业级 HTTP 请求加解密、防篡改签名校验与上下�
 通过 Composer 安装：
 
 ```bash
-composer require hlw2326/request-crypto
+composer require hlw2326/think-request-crypto
 ```
 
 ---

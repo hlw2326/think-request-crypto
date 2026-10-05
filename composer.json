@@ -1,5 +1,5 @@
 {
-    "name": "hlw2326/request-crypto",
+    "name": "hlw2326/think-request-crypto",
     "description": "Multi-driver HTTP request signature verification, RSA context encryption and decryption library for ThinkPHP.",
     "type": "library",
     "license": "MIT",
@@ -18,7 +18,7 @@
         "security",
         "encryption"
     ],
-    "homepage": "https://github.com/hlw2326/request-crypto",
+    "homepage": "https://github.com/hlw2326/think-request-crypto",
     "autoload": {
         "psr-4": {
             "Hlw\\Crypto\\": "src/"
