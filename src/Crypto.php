@@ -19,7 +19,7 @@ class Crypto
      *
      * 密文协议格式：[RSA加密的Key:IV].[AES加密的业务密文]
      *
-     * @param string $cipher 密文字符串（支持两段式混合密文、纯 RSA 分段密文、或明文 JSON）
+     * @param string $cipher 密文字符串（两段式混合密文或明文 JSON）
      * @param ?string $privateKey RSA 私钥内容（缺省自动从 config 或 env 读取）
      * @return ?array 解密后的数据字典，解密失败返回 null
      */
@@ -33,97 +33,46 @@ class Crypto
         // 1. 若直接为明文 JSON 结构
         if (str_starts_with($cipher, '{') || str_starts_with($cipher, '[')) {
             $rawJson = json_decode($cipher, true);
-            if (is_array($rawJson)) {
-                return $rawJson;
-            }
+            return is_array($rawJson) ? $rawJson : null;
         }
 
-        // 2. 若为 URL 编码的 JSON
-        if (str_contains($cipher, '%')) {
-            $decodedUrl = rawurldecode($cipher);
-            if (str_starts_with($decodedUrl, '{') || str_starts_with($decodedUrl, '[')) {
-                $rawJson = json_decode($decodedUrl, true);
-                if (is_array($rawJson)) {
-                    return $rawJson;
-                }
-            }
+        // 2. 方案1：RSA + AES 混合解密解析（标准两段式：[RSA_KEY_IV].[AES_DATA]）
+        if (!str_contains($cipher, '.')) {
+            return null;
         }
 
-        // 3. 读取 RSA 私钥并格式化换行
+        [$encKeyB64, $encDataB64] = explode('.', $cipher, 2);
+
         $key = $privateKey ?: (function_exists('config') ? (string) config('crypto.private_key') : (string) env('RSA_PRIVATE_KEY'));
         $key = str_replace(['\r\n', '\n'], "\n", trim($key));
         if ($key === '') {
             return null;
         }
 
-        // 4. 方案1：RSA + AES 混合解密解析（标准两段式：[RSA_KEY_IV].[AES_DATA]）
-        if (str_contains($cipher, '.')) {
-            $parts = explode('.', $cipher);
-            if (count($parts) === 2) {
-                [$encKeyB64, $encDataB64] = $parts;
-                $rawEncKey = base64_decode($encKeyB64, true);
-                if ($rawEncKey !== false) {
-                    $decryptedSecret = '';
-                    $isKeyOk = openssl_private_decrypt($rawEncKey, $decryptedSecret, $key, OPENSSL_PKCS1_PADDING);
-                    if ($isKeyOk && str_contains($decryptedSecret, ':')) {
-                        [$aesKey, $aesIv] = explode(':', $decryptedSecret, 2);
-                        $rawEncData = base64_decode($encDataB64, true);
-                        if ($rawEncData !== false) {
-                            $decryptedJson = openssl_decrypt($rawEncData, 'AES-128-CBC', $aesKey, OPENSSL_RAW_DATA, $aesIv);
-                            if ($decryptedJson !== false && $decryptedJson !== '') {
-                                $data = json_decode($decryptedJson, true);
-                                if (is_array($data)) {
-                                    return $data;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+        $rawEncKey = base64_decode($encKeyB64, true);
+        if ($rawEncKey === false) {
+            return null;
         }
 
-        // 5. 纯 RSA 分段解密（多段点分隔或连续 256 字节块）
-        $isRawBytes = false;
-        if (str_contains($cipher, '.')) {
-            $chunks = explode('.', $cipher);
-        } else {
-            $rawAll = base64_decode($cipher, true);
-            if ($rawAll === false) {
-                $rawAll = base64_decode(str_replace(' ', '+', $cipher), true);
-            }
-            if ($rawAll !== false && strlen($rawAll) >= 256 && strlen($rawAll) % 256 === 0) {
-                $chunks = str_split($rawAll, 256);
-                $isRawBytes = true;
-            } else {
-                $chunks = [$cipher];
-            }
+        $decryptedSecret = '';
+        $isKeyOk = openssl_private_decrypt($rawEncKey, $decryptedSecret, $key, OPENSSL_PKCS1_PADDING);
+        if (!$isKeyOk || !str_contains($decryptedSecret, ':')) {
+            return null;
         }
 
-        $result = '';
-        foreach ($chunks as $chunk) {
-            if ($isRawBytes) {
-                $rawChunk = $chunk;
-            } else {
-                $rawChunk = base64_decode($chunk, true);
-                if ($rawChunk === false) {
-                    $rawChunk = base64_decode(str_replace(' ', '+', $chunk), true);
-                }
-            }
-            if ($rawChunk === false || $rawChunk === '') {
-                return null;
-            }
-
-            $decrypted = '';
-            $isOk = openssl_private_decrypt($rawChunk, $decrypted, $key, OPENSSL_PKCS1_PADDING);
-            if (!$isOk) {
-                return null;
-            }
-
-            $result .= $decrypted;
+        [$aesKey, $aesIv] = explode(':', $decryptedSecret, 2);
+        $rawEncData = base64_decode($encDataB64, true);
+        if ($rawEncData === false) {
+            return null;
         }
 
-        $decoded = json_decode($result, true);
-        return is_array($decoded) ? $decoded : null;
+        $decryptedJson = openssl_decrypt($rawEncData, 'AES-128-CBC', $aesKey, OPENSSL_RAW_DATA, $aesIv);
+        if ($decryptedJson === false || $decryptedJson === '') {
+            return null;
+        }
+
+        $data = json_decode($decryptedJson, true);
+        return is_array($data) ? $data : null;
     }
 
     /**
