@@ -4,21 +4,18 @@
 [![Total Downloads](https://poser.pugx.org/hlw2326/request-crypto/downloads)](https://packagist.org/packages/hlw2326/request-crypto)
 [![License](https://poser.pugx.org/hlw2326/request-crypto/license)](https://packagist.org/packages/hlw2326/request-crypto)
 
-ThinkPHP / PHP 企业级多驱动 HTTP 请求加解密、防篡改签名与时钟防重放验证扩展库（对标 `think\admin\Storage` 驱动化架构设计）。
+ThinkPHP / PHP 企业级 HTTP 请求加解密、防篡改签名校验与上下文安全解密扩展包。配套前端 `@hlw-uni-mp/request`。
 
 ---
 
-## 🌟 特性亮点
+## 🌟 核心特性
 
-- **对标 `Storage` 门面设计**：支持通过 `Crypto::verify($request)`、`Crypto::encrypt($data)`、`Crypto::decrypt($cipher)` 统一静态门面调用，支持根据需求动态切换驱动实例 `Crypto::instance('aes')`。
-- **四大驱动体系**：
-  1. `sig`：**URL 参数字典排序 + MD5 验签**，支持 5 分钟动态时钟防重放，完美对齐前端 `@hlw-vue/request-crypto` 与 `@hlw-uni/mp-vue`。
-  2. `aes`：**全报文对称加密 (AES-128/256-CBC)**，客户端上送 JSON 密文，中间件/服务端验证通过后**自动回写注入至 `$request` 与 `$_POST`**，业务控制器无感读取参数。
-  3. `hmac`：**工业级 HMAC-SHA256 标头验签**，通过 HTTP Headers (`X-Signature`, `X-Timestamp`, `X-Nonce`) 认证请求。
-  4. `none`：**免密直通空驱动**，用于本地研发、PHPUnit 单测与 Postman/Apifox 接口无加密调试。
-- **环境无缝解耦**：可在 `.env` 中通过 `CRYPTO_DRIVER=sig` / `CRYPTO_DRIVER=aes` 随时无感切换，代码零改造。
-- **开箱即用中间件**：内置 `CryptoMiddleware`，可在全局或路由中一键挂载。
-- **跨语言/跨平台对齐**：前端对应独立 NPM 包 `@hlw-vue/request-crypto`，跨端加解密 100% 互通。
+- **双向签名防篡改**：采用 SHA256 算法，按业务参数递归 ASCII 字典序排序 + 时间戳 + Nonce + 密钥计算签名，安全防篡改。
+- **动态时钟防重放**：毫秒/秒级时间戳比对，内置可配置时钟公差（默认 300 秒），杜绝网络重放攻击。
+- **RSA-2048 分段解密**：将客户端敏感设备指纹与用户登录 Token（`x-client-context`）通过 RSA 公钥加密传输，服务端私钥自动分段解密。
+- **兼容性卓越**：密文同时支持点分隔 Base64 块（`chunk1.chunk2`）与连续 256 字节原始分块，支持明文 JSON 直通。
+- **开箱即用中间件**：提供 `CryptoMiddleware`，支持在全局或特定路由一键校验并注入 `$request->clientContext`。
+- **全生态闭环**：与前端 NPM 生态包 `@hlw-uni-mp/request` 100% 协议级对称互通。
 
 ---
 
@@ -34,68 +31,60 @@ composer require hlw2326/request-crypto
 
 ## ⚙️ 配置说明
 
-在项目 `config/crypto.php`（或 ThinkPHP 配置目录）中配置：
+将 `config/crypto.php` 复制到 ThinkPHP 项目的 `config/crypto.php`：
 
 ```php
 return [
-    // 默认驱动：sig | aes | hmac | none
-    'default' => env('CRYPTO_DRIVER', 'sig'),
+    // 是否启用加解密与签名验证
+    'enabled'     => (bool) (env('CRYPTO_ENABLED', true)),
 
-    // 驱动配置
-    'drivers' => [
-        'sig' => [
-            'secret' => env('CRYPTO_SIG_SECRET', 'hlw2326'),
-            'expire' => env('CRYPTO_EXPIRE', 300), // 签名有效期(秒)
-        ],
-        'aes' => [
-            'key'    => env('CRYPTO_AES_KEY', 'hlw2326key123456'), // 16或32位
-            'iv'     => env('CRYPTO_AES_IV', 'hlw2326iv1234567'),  // 16位
-            'method' => 'AES-128-CBC',
-            'expire' => env('CRYPTO_EXPIRE', 300),
-        ],
-        'hmac' => [
-            'secret' => env('CRYPTO_HMAC_SECRET', 'hlw2326'),
-            'algo'   => 'sha256',
-            'expire' => env('CRYPTO_EXPIRE', 300),
-        ],
-        'none' => [],
-    ],
+    // 签名密钥 (用于校验 X-Client-Sign 防篡改)
+    'secret'      => (string) (env('CRYPTO_SIGN_SECRET') ?: env('CRYPTO_SECRET', '')),
+
+    // 请求时钟最大容忍偏差秒数 (防重放攻击，默认 300 秒)
+    'expire'      => (int) (env('CRYPTO_EXPIRE', 300)),
+
+    // 服务端 RSA-2048 私钥 (用于解密 X-Client-Context 中的设备与 Token)
+    'private_key' => (string) env('RSA_PRIVATE_KEY', ''),
+
+    // 服务端 RSA-2048 公钥
+    'public_key'  => (string) env('RSA_PUBLIC_KEY', ''),
 ];
 ```
 
-在 `.env` 中指定默认驱动：
+或在 `.env` 环境变量中直接指定：
 
 ```env
-CRYPTO_DRIVER=sig
-CRYPTO_SIG_SECRET=hlw2326
-CRYPTO_AES_KEY=hlw2326key123456
-CRYPTO_AES_IV=hlw2326iv1234567
+CRYPTO_ENABLED=true
+CRYPTO_SIGN_SECRET=your_signature_secret
 CRYPTO_EXPIRE=300
+RSA_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"
+RSA_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"
 ```
 
 ---
 
 ## 🚀 快速上手
 
-### 1. 验证请求签名或解密
+### 1. 业务控制器静态调用
 
 ```php
 use Hlw\Crypto\Crypto;
 
-// 校验当前请求
-[$ok, $message, $data] = Crypto::verify($request);
+// 1. 校验当前请求合法性并获取上下文
+[$ok, $message, $context] = Crypto::verify($this->request);
 
 if (!$ok) {
-    // 验签失败或请求重放
-    return json(['code' => 0, 'info' => $message], 401);
+    return json(['code' => 0, 'msg' => $message], 401);
 }
 
-// 验签成功，$data 为解析出的有效请求载荷
+// 2. 获取客户端解密后的设备信息与登录 Token
+$token = (string) ($this->request->header('token', '') ?: ($context['token'] ?? ''));
 ```
 
-### 2. 使用中间件（推荐）
+### 2. 使用中间件（一键全局校验）
 
-在 ThinkPHP `app/middleware.php` 或特定路由中注册：
+在 ThinkPHP `app/middleware.php` 或特定应用/路由中注册：
 
 ```php
 return [
@@ -103,36 +92,15 @@ return [
 ];
 ```
 
-开启中间件后：
-- `sig` / `hmac` 模式下非法请求会被自动拦截，返回 401 JSON；
-- `aes` 模式下加密请求会被自动解密，解密后的参数自动注入 `$request`，在控制器中直接使用 `$request->param()` 即可！
-
-### 3. 数据加解密
-
-```php
-use Hlw\Crypto\Crypto;
-
-// 加密数据（采用当前驱动或指定驱动）
-$ciphertext = Crypto::encrypt(['order_id' => '10086', 'amount' => 99.9]);
-
-// 解密数据
-$payload = Crypto::decrypt($ciphertext);
-
-// 手动指定使用 AES 驱动
-$aesPayload = Crypto::instance('aes')->decrypt($ciphertext);
-```
-
 ---
 
-## 🤝 搭配前端
+## 🤝 配套前端
 
-前端 UniApp / Vue 3 项目请配套安装：
+前端 Uni-app / Vue 项目请配套安装：
 
 ```bash
-pnpm add @hlw-vue/request-crypto
+pnpm add @hlw-uni-mp/request
 ```
-
-前端统一在 `.env` 中设置驱动名称与密钥，即可实现全自动跨端签名/报文加解密。
 
 ---
 
